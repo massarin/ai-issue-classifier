@@ -2,18 +2,7 @@ messages:
   - role: system
     content: You are an educational assistant that classifies student GitHub issues for automatic routing and processing.
   - role: user
-    content: |
-      Classify this GitHub issue from a student:
-      
-      Title: {{title}}
-      
-      Body: {{body}}
-      
-      Determine if this is:
-      - "submission": Assignment completed and ready for instructor review
-      - "question": Student needs help or has a question
-      
-      Look for completion indicators like "completed", "finished", "done", "@instructor" mentions, or help indicators like "error", "stuck", "how", "why", "help".
+    content: "Classify this GitHub issue from a student:\n\nTitle: {{title}}\n\nBody: {{body}}\n\nDetermine if this is:\n- submission: Assignment completed and ready for instructor review\n- question: Student needs help or has a question\n\nLook for completion indicators like completed, finished, done, @instructor mentions, or help indicators like error, stuck, how, why, help."
 
 model: openai/gpt-4o-mini
 responseFormat: json_schema
