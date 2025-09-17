@@ -19,8 +19,9 @@ jobs:
     - name: Load Configuration
       id: config
       run: |
-        CONFIG_JSON=$(cat .github/configs/educational.json)
-        echo "config-json=$CONFIG_JSON" >> $GITHUB_OUTPUT
+        echo "config-json<<EOF" >> $GITHUB_OUTPUT
+        cat .github/configs/educational.json | jq -c . >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Create input files for AI
       run: |
@@ -111,7 +112,7 @@ jobs:
         AI_CONFIDENCE: ${{ steps.classify.outputs.response && fromJSON(steps.classify.outputs.response).confidence }}
       with:
         script: |
-          const config = JSON.parse(`${{ steps.config.outputs.config-json }}`);
+          const config = ${{ steps.config.outputs.config-json }};
 
           const student = context.payload.issue.user.login;
 
