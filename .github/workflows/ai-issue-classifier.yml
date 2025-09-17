@@ -16,6 +16,14 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies
+      run: npm install js-yaml
+
     - name: Load Configuration
       id: config
       run: |
@@ -36,8 +44,7 @@ jobs:
         script: |
           const yaml = require('js-yaml');
           const fs = require('fs');
-
-          const config = yaml.load(`${{ steps.config.outputs.config-content }}`);
+          const config = ${{ steps.config.outputs.config-json }};
 
           // Build categories description
           const categoriesDesc = config.categories.map(cat =>
@@ -65,7 +72,7 @@ jobs:
             ],
             model: config.model,
             responseFormat: "json_schema",
-            jsonSchema: `{
+            jsonSchema: JSON.stringify({
               "name": "issue_classification",
               "strict": true,
               "schema": {
@@ -73,7 +80,7 @@ jobs:
                 "properties": {
                   "classification": {
                     "type": "string",
-                    "enum": ${JSON.stringify(categoryIds)},
+                    "enum": categoryIds,
                     "description": "The primary classification of the issue"
                   },
                   "confidence": {
@@ -89,10 +96,10 @@ jobs:
                 "additionalProperties": false,
                 "required": ["classification", "confidence", "reasoning"]
               }
-            }`
+            })
           };
           
-          // Write to temp prompt file
+          // Write to temp prompt file as YAML as required by actions/ai-inference
           fs.writeFileSync('/tmp/dynamic-prompt.yml', yaml.dump(promptContent));
           console.log('Generated prompt file:', yaml.dump(promptContent));
 
