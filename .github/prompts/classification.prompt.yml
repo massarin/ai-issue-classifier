@@ -2,11 +2,12 @@ messages:
   - role: system
     content: You are an educational assistant that classifies student GitHub issues for automatic routing and processing.
   - role: user
-    content: |-
+    content: |
       Classify this GitHub issue from a student:
       
-      **Title:** {{title}}
-      **Body:** {{body}}
+      Title: {{title}}
+      
+      Body: {{body}}
       
       Determine if this is:
       - "submission": Assignment completed and ready for instructor review

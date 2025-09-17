@@ -16,19 +16,14 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       
-    - name: Create input files for AI
-      run: |
-        echo "${{ github.event.issue.title }}" > /tmp/issue-title.txt
-        echo "${{ github.event.issue.body }}" > /tmp/issue-body.txt
-        
     - name: AI Classification with JSON Schema
       id: classify
       uses: actions/ai-inference@v1
       with:
         prompt-file: '.github/prompts/classification.prompt.yml'
-        file_input: |
-          title: /tmp/issue-title.txt
-          body: /tmp/issue-body.txt
+        input: |
+          title: ${{ github.event.issue.title }}
+          body: ${{ github.event.issue.body }}
         
     - name: Process Classification Result
       uses: actions/github-script@v7
