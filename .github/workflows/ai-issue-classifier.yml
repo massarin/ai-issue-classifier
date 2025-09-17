@@ -31,86 +31,14 @@ jobs:
         cat .github/configs/educational.json | jq -c . >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
-    - name: Create input files for AI
-      run: |
-        echo '${{ github.event.issue.title }}' > /tmp/issue-title.txt
-        cat << 'EOF' > /tmp/issue-body.txt
-        ${{ github.event.issue.body }}
-        EOF
-
-    - name: Generate Dynamic Prompt
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const yaml = require('js-yaml');
-          const fs = require('fs');
-          const config = ${{ steps.config.outputs.config-json }};
-
-          // Build categories description
-          const categoriesDesc = config.categories.map(cat =>
-            `- ${cat.id}: ${cat.description}`
-          ).join('\n');
-
-          // Build indicators with better formatting
-          const indicators = config.categories.map(cat =>
-            `Look for ${cat.id} indicators like: ${cat.indicators.join(', ')}`
-          ).join('\n');
-          
-          // Generate enum for JSON schema
-          const categoryIds = config.categories.map(cat => cat.id);
-          
-          const promptContent = {
-            messages: [
-              {
-                role: "system",
-                content: `You are an ${config.prompt.system_role}.`
-              },
-              {
-                role: "user", 
-                content: `${config.prompt.user_instruction}:\n\nTitle: {{title}}\n\nBody: {{body}}\n\nDetermine if this is:\n${categoriesDesc}\n\n${indicators}`
-              }
-            ],
-            model: config.model,
-            responseFormat: "json_schema",
-            jsonSchema: JSON.stringify({
-              "name": "issue_classification",
-              "strict": true,
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "classification": {
-                    "type": "string",
-                    "enum": categoryIds,
-                    "description": "The primary classification of the issue"
-                  },
-                  "confidence": {
-                    "type": "string",
-                    "enum": ["high", "medium", "low"],
-                    "description": "Confidence level in the classification"
-                  },
-                  "reasoning": {
-                    "type": "string",
-                    "description": "Brief explanation for the classification decision"
-                  }
-                },
-                "additionalProperties": false,
-                "required": ["classification", "confidence", "reasoning"]
-              }
-            })
-          };
-          
-          // Write to temp prompt file as YAML as required by actions/ai-inference
-          fs.writeFileSync('/tmp/dynamic-prompt.yml', yaml.dump(promptContent));
-          console.log('Generated prompt file:', yaml.dump(promptContent));
-
-    - name: AI Classification with Generated Prompt
+    - name: AI Classification
       id: classify
       uses: actions/ai-inference@v1
       with:
-        prompt-file: '/tmp/dynamic-prompt.yml'
-        file_input: |
-          title: /tmp/issue-title.txt
-          body: /tmp/issue-body.txt
+        prompt-file: '.github/prompts/classify-issue.prompt.yml'
+        input: |
+          title: ${{ github.event.issue.title }}
+          body: ${{ github.event.issue.body }}
 
     - name: Execute Config-Driven Actions
       uses: actions/github-script@v7
