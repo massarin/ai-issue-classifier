@@ -31,14 +31,21 @@ jobs:
         cat .github/configs/educational.json | jq -c . >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
 
+    - name: Create input files for AI
+      run: |
+        echo '${{ github.event.issue.title }}' > /tmp/issue-title.txt
+        cat << 'EOF' > /tmp/issue-body.txt
+        ${{ github.event.issue.body }}
+        EOF
+
     - name: AI Classification
       id: classify
       uses: actions/ai-inference@v1
       with:
         prompt-file: '.github/prompts/classify-issue.prompt.yml'
-        input: |
-          title: ${{ github.event.issue.title }}
-          body: ${{ github.event.issue.body }}
+        file_input: |
+          title: /tmp/issue-title.txt
+          body: /tmp/issue-body.txt
 
     - name: Execute Config-Driven Actions
       uses: actions/github-script@v7
