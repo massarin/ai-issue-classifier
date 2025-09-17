@@ -1,27 +1,32 @@
-# Assignment Issue Classifier
+# AI Assignment Issue Classifier
 
-A friendly, configurable GitHub workflow that automatically classifies student issues as assignment submissions or questions, then responds with warm, human-like messages.
-
-## Features
-
-- 🤗 **Human-friendly responses** - Congratulatory messages instead of robotic AI speak
-- ⚙️ **Fully configurable** - Customize instructors, messages, and behavior via JSON config
-- 🎯 **Smart classification** - Distinguishes between submissions and questions  
-- 🔧 **No external dependencies** - Uses native GitHub Actions JSON parsing
+A GitHub workflow that automatically classifies student issues as assignment submissions or questions using AI with structured output, then responds with helpful messages.
 
 ## Setup
 
-1. Copy the workflow file to `.github/workflows/assignment-issue-classifier.yml`
-2. Copy the prompt file to `.github/prompts/assignment-classifier.prompt.yml` 
-3. Customize `.github/config/classifier-config.json` with your course details
+### Prerequisites
+1. **Enable GitHub Models** in your organization settings (required for AI classification)
+   - Go to your organization settings
+   - Navigate to Code, planning, and automation  → Models → GitHub Models for development → Enabled
+   - Enable access to GitHub Models
 
-## Configuration
+### Installation
+1. Copy the workflow file: `.github/workflows/structured-ai-classifier.yml`
+2. Copy the prompt file: `.github/prompts/classification.prompt.yml`
+3. Update instructor usernames in the workflow file
 
-Edit `.github/config/classifier-config.json` to customize:
+## How It Works
 
-- **Instructors**: List of GitHub usernames to notify
-- **Messages**: Custom text for different response types
-- **Labels**: What labels to apply to issues
-- **Behavior**: Control closing submissions, timestamps, etc.
+1. **Issue Detection**: Workflow triggers on new/reopened issues
+2. **AI Classification**: Uses structured prompt with JSON schema to classify as "submission" or "question" 
+3. **Intelligent Response**: 
+   - **Submissions**: Posts congratulatory message, adds labels, closes issue
+   - **Questions**: Assigns instructors, adds labels, posts help message
+4. **Error Handling**: Falls back to manual review if AI classification fails
 
-The workflow gracefully falls back to sensible defaults if no config file is found.
+## Technical Details
+
+- Uses `actions/ai-inference@v1` with `.prompt.yml` files
+- JSON schema ensures structured, parseable responses
+- No regex parsing - direct JSON handling
+- Requires `models: read` permission for GitHub Models access
