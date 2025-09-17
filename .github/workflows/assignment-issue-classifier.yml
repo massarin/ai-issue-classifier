@@ -1,13 +1,13 @@
 # Assignment Issue Classifier - Automatically processes student submissions and questions
 # .github/workflows/assignment-issue-classifier.yml
 
-name: Assignment Issue Classifier
+name: AI Assignment Classifier
 on:
   issues:
     types: [opened, reopened]
 
 jobs:
-  classify_issue:
+  ai_classify:
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -17,24 +17,6 @@ jobs:
     - name: Checkout for prompt file
       uses: actions/checkout@v4
       
-    - name: Load Configuration
-      id: config
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          
-          try {
-            const configFile = fs.readFileSync('.github/config/classifier-config.json', 'utf8');
-            const config = JSON.parse(configFile);
-            
-            console.log('Successfully loaded configuration:', config);
-            return config;
-          } catch (error) {
-            console.log('Config file not found, using defaults');
-            return null;
-          }
-
     - name: Add trigger label (temporarily)
       uses: actions/github-script@v7
       with:
@@ -46,7 +28,7 @@ jobs:
             labels: ['ai-classify']
           });
     
-    - name: Issue Classification
+    - name: AI Classification
       uses: github/ai-assessment-comment-labeler@main
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
@@ -58,7 +40,7 @@ jobs:
         prompts_directory: '.github/prompts'
         labels_to_prompts_mapping: 'ai-classify,assignment-classifier.prompt.yml'
     
-    - name: Process Classification Results
+    - name: Process AI Classification
       uses: actions/github-script@v7
       with:
         script: |
@@ -135,6 +117,10 @@ jobs:
           const isQuestion = labels.some(label => 
             label.includes('ai:assignment-classifier:question') || 
             label.includes('ai:assignment-classifier:help')
+          );
+          
+          const isUnprocessable = labels.some(label => 
+            label.includes('ai:assignment-classifier:unable-to-process')
           );
           
           if (isSubmission) {
@@ -214,6 +200,37 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.payload.issue.number,
               labels: questionLabels
+            });
+            
+          } else if (isUnprocessable) {
+            // AI service failed - handle gracefully
+            const errorMessage = `🤖 **Classification Service Unavailable**\n\n` +
+              `Hi @${student}! Thanks for your submission. Our automatic classification service is currently experiencing issues.\n\n` +
+              `**What happens next:**\n` +
+              `- The instructors ${instructorMentions} have been notified\n` +
+              `- They'll review your issue manually and respond soon\n` +
+              `- No action needed from you\n\n` +
+              `**Sorry for the inconvenience!** This helps us provide better service.`;
+
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              assignees: config.instructors
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: errorMessage
+            });
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              labels: ['needs-manual-review', 'classification-failed']
             });
             
           } else {

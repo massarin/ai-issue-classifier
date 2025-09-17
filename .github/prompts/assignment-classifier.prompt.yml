@@ -31,7 +31,7 @@ messages:
       - "Stuck on the regex exercise, can someone help?" → QUESTION
       
       **Output format:** 
-      ### Assessment: [submission|question]
+      ### AI Assessment: [submission|question]
       
       Choose exactly one classification based on the primary intent of the issue.
       
