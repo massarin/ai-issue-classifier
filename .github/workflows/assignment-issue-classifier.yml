@@ -23,23 +23,16 @@ jobs:
       with:
         script: |
           const fs = require('fs');
-          const yaml = require('js-yaml');
           
           try {
-            const configFile = fs.readFileSync('.github/config/classifier-config.yml', 'utf8');
-            const config = yaml.load(configFile);
+            const configFile = fs.readFileSync('.github/config/classifier-config.json', 'utf8');
+            const config = JSON.parse(configFile);
             
-            // Set outputs for use in later steps
-            core.setOutput('instructors', JSON.stringify(config.instructors));
-            core.setOutput('course_name', config.course.name);
-            core.setOutput('config', JSON.stringify(config));
-            
-            console.log('Loaded configuration:', config);
+            console.log('Successfully loaded configuration:', config);
+            return config;
           } catch (error) {
-            console.error('Error loading config:', error);
-            // Fallback to defaults
-            core.setOutput('instructors', JSON.stringify(['massarin', 'seawaR', 'larnsce']));
-            core.setOutput('course_name', 'Data Science Course');
+            console.log('Config file not found, using defaults');
+            return null;
           }
 
     - name: Add trigger label (temporarily)
@@ -70,15 +63,15 @@ jobs:
       with:
         script: |
           const fs = require('fs');
-          const yaml = require('js-yaml');
           
-          // Load configuration
+          // Load configuration with fallback to defaults
           let config;
           try {
-            const configFile = fs.readFileSync('.github/config/classifier-config.yml', 'utf8');
-            config = yaml.load(configFile);
+            const configFile = fs.readFileSync('.github/config/classifier-config.json', 'utf8');
+            config = JSON.parse(configFile);
+            console.log('Loaded custom configuration');
           } catch (error) {
-            console.log('Using default configuration');
+            console.log('Using default configuration (config file not found)');
             config = {
               instructors: ['massarin', 'seawaR', 'larnsce'],
               course: { name: 'Data Science Course' },
@@ -108,7 +101,12 @@ jobs:
                   next_steps: 'Please edit your issue to clarify, or the instructors will review manually.'
                 }
               },
-              behavior: { close_submissions: true, show_repository_info: true, auto_timestamp: true }
+              behavior: { close_submissions: true, show_repository_info: true, auto_timestamp: true, assign_questions_to_instructors: true, assign_uncertain_to_instructors: true },
+              labels: {
+                submission: ['assignment-submission', 'completed', 'auto-processed'],
+                question: ['question', 'needs-instructor-review', 'auto-processed'],
+                uncertain: ['needs-manual-review', 'requires-clarification']
+              }
             };
           }
           
