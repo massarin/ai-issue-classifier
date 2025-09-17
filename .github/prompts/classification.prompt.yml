@@ -1,0 +1,44 @@
+messages:
+  - role: system
+    content: You are an educational assistant that classifies student GitHub issues for automatic routing and processing.
+  - role: user
+    content: |-
+      Classify this GitHub issue from a student:
+      
+      **Title:** {{title}}
+      **Body:** {{body}}
+      
+      Determine if this is:
+      - "submission": Assignment completed and ready for instructor review
+      - "question": Student needs help or has a question
+      
+      Look for completion indicators like "completed", "finished", "done", "@instructor" mentions, or help indicators like "error", "stuck", "how", "why", "help".
+
+model: openai/gpt-4o-mini
+responseFormat: json_schema
+jsonSchema: |-
+  {
+    "name": "issue_classification",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": ["submission", "question"],
+          "description": "The primary classification of the issue"
+        },
+        "confidence": {
+          "type": "string", 
+          "enum": ["high", "medium", "low"],
+          "description": "Confidence level in the classification"
+        },
+        "reasoning": {
+          "type": "string",
+          "description": "Brief explanation for the classification decision"
+        }
+      },
+      "additionalProperties": false,
+      "required": ["classification", "confidence", "reasoning"]
+    }
+  }
