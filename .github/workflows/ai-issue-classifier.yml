@@ -6,27 +6,8 @@ on:
     types: [opened, reopened]
 
 jobs:
-  discover-configs:
-    runs-on: ubuntu-latest
-    outputs:
-      configs: ${{ steps.find-configs.outputs.configs }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      
-    - name: Find Config Files
-      id: find-configs
-      run: |
-        configs=$(find .github/configs -name "*.yml" -o -name "*.yaml" | jq -R -s -c 'split("\n")[:-1]')
-        echo "configs=$configs" >> $GITHUB_OUTPUT
-        echo "Found configs: $configs"
-
   classify:
-    needs: discover-configs
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        config: ${{ fromJson(needs.discover-configs.outputs.configs) }}
     permissions:
       issues: write
       contents: read
@@ -38,12 +19,11 @@ jobs:
     - name: Load Configuration
       id: config
       run: |
-        CONFIG_FILE="${{ matrix.config }}"
-        delimiter=$(uuidgen)
+        CONFIG_FILE=".github/configs/educational.yml"
         {
-          echo "config-content<<$delimiter"
+          echo 'config-content<<EOF'
           cat "$CONFIG_FILE"
-          echo "$delimiter"
+          echo 'EOF'
         } >> $GITHUB_OUTPUT
 
     - name: Create input files for AI
