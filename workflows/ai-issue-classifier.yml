@@ -1,0 +1,228 @@
+# .github/workflows/ai-issue-classifier.yml
+name: AI Issue Classifier
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  discover-configs:
+    runs-on: ubuntu-latest
+    outputs:
+      configs: ${{ steps.find-configs.outputs.configs }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Find all config files
+      id: find-configs
+      run: |
+        configs=$(find configs -name "*.json" -not -name "*.example" | jq -R -s -c 'split("\n")[:-1]')
+        echo "configs=$configs" >> $GITHUB_OUTPUT
+        echo "Found configs: $configs"
+
+  classify:
+    needs: discover-configs
+    if: ${{ fromJSON(needs.discover-configs.outputs.configs)[0] }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+      models: read
+    strategy:
+      matrix:
+        config-file: ${{ fromJSON(needs.discover-configs.outputs.configs) }}
+      fail-fast: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies
+      run: npm install js-yaml
+
+    - name: Load Configuration
+      id: config
+      run: |
+        echo "config-json<<EOF" >> $GITHUB_OUTPUT
+        cat ${{ matrix.config-file }} | jq -c . >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        echo "Loaded config from: ${{ matrix.config-file }}"
+
+    - name: Create input files for AI
+      run: |
+        echo '${{ github.event.issue.title }}' > /tmp/issue-title.txt
+        cat << 'EOF' > /tmp/issue-body.txt
+        ${{ github.event.issue.body }}
+        EOF
+
+    - name: AI Classification
+      id: classify
+      uses: actions/ai-inference@v1
+      with:
+        prompt-file: 'prompts/classify-issue.prompt.yml'
+        file_input: |
+          title: /tmp/issue-title.txt
+          body: /tmp/issue-body.txt
+
+    - name: Execute Config-Driven Actions
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const config = ${{ steps.config.outputs.config-json }};
+
+          const student = context.payload.issue.user.login;
+
+          try {
+            const aiResponse = `${{ steps.classify.outputs.response }}`;
+            console.log('AI Response:', aiResponse);
+
+            const result = JSON.parse(aiResponse);
+            console.log('Parsed Classification:', result);
+
+            // Find the category config
+            const category = config.categories.find(c => c.id === result.classification);
+            if (!category) {
+              throw new Error(`Unknown classification: ${result.classification}`);
+            }
+
+            // Execute each action defined in the category
+            for (const action of category.actions) {
+              await executeAction(action, result, student, config);
+            }
+
+          } catch (error) {
+            console.error('Classification processing failed:', error);
+            await handleError(error, student, config);
+          }
+
+          // Helper function to execute actions
+          async function executeAction(action, result, student, config) {
+            const variables = {
+              author: student,
+              title: context.payload.issue.title,
+              body: context.payload.issue.body,
+              classification: result.classification,
+              reasoning: result.reasoning,
+              confidence: result.confidence.charAt(0).toUpperCase() + result.confidence.slice(1),
+              repository: context.repo.repo,
+              created_at: context.payload.issue.created_at,
+              date: new Date().toLocaleString()
+            };
+
+            switch (action.type) {
+              case 'comment':
+                const message = interpolateTemplate(action.template, variables);
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  body: message
+                });
+                break;
+
+              case 'add_labels':
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  labels: action.labels
+                });
+                break;
+
+              case 'assign_users':
+                await github.rest.issues.addAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  assignees: action.users
+                });
+                break;
+
+              case 'close_issue':
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  state: 'closed'
+                });
+                break;
+
+              case 'notify_users':
+                // Assign users and add mentions to a comment if specified
+                if (action.users && action.users.length > 0) {
+                  // Assign the users
+                  await github.rest.issues.addAssignees({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: context.payload.issue.number,
+                    assignees: action.users
+                  });
+                  
+                  // Add comment with mentions if message specified
+                  if (action.message) {
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: context.payload.issue.number,
+                      body: action.message
+                    });
+                  }
+                }
+                break;
+            }
+          }
+          
+          function interpolateTemplate(template, variables) {
+            return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+              const trimmedKey = key.trim();
+              
+              // Handle nested properties like user.login
+              const value = trimmedKey.split('.').reduce((obj, prop) => {
+                return obj && obj[prop] !== undefined ? obj[prop] : undefined;
+              }, variables);
+              
+              if (value === undefined) {
+                console.warn(`Template variable not found: ${trimmedKey}`);
+                return match; // Keep original placeholder
+              }
+              
+              return String(value); // Ensure string conversion
+            });
+          }
+          
+          async function handleError(error, student, config) {
+            const fallbackUsers = config.fallback?.assign_users || ['admin'];
+            const fallbackLabels = config.fallback?.labels || ['needs-manual-review', 'ai-failed'];
+
+            const errorMessage = interpolateTemplate(
+              config.fallback?.error_template ||
+              `🤖 **AI Classification Failed**\\n\\nHi @{{author}}! Our AI classifier encountered an issue.\\n\\n**Error:** ${error.message}\\n\\nAdmins have been notified for manual review.`,
+              { author: student }
+            );
+
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              assignees: fallbackUsers
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: errorMessage
+            });
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              labels: fallbackLabels
+            });
+          }

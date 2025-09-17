@@ -1,30 +1,3 @@
-# Generalized AI Issue Classifier
-
-A flexible, config-driven GitHub workflow that automatically classifies issues using AI and executes customizable actions based on the classification results.
-## Setup
-
-### Prerequisites
-1. **Enable GitHub Models** in your organization settings
-   - Go to organization settings → Code, planning, and automation → Models
-   - Enable GitHub Models for development
-   - Grant access to GitHub Models
-
-### Installation
-**One-liner installation:**
-```bash
-git clone https://github.com/your-username/generalised-ai-issue-classifier .github
-```
-
-**Manual installation:**
-1. Copy `workflows/ai-issue-classifier.yml` to `.github/workflows/`
-2. Copy `prompts/classify-issue.prompt.yml` to `.github/prompts/`
-3. Copy `configs/educational.json.example` to `.github/configs/educational.json`
-4. Update usernames and settings in your config files
-
-## Configuration
-
-### Basic Config Structure
-```json
 {
   "name": "Educational Issue Classifier",
   "model": "openai/gpt-4o-mini",
@@ -81,15 +54,3 @@ git clone https://github.com/your-username/generalised-ai-issue-classifier .gith
     "error_template": "🤖 **AI Classification Failed**\n\nHi @{{author}}! Our AI classifier encountered an issue processing your request.\n\nInstructors have been notified for manual review.\n\n**Sorry for the inconvenience!** Your issue will be handled manually."
   }
 }
-```
-
-### Available Actions
-- `comment`: Post a comment with template
-- `add_labels`: Add labels to the issue
-- `assign_users`: Assign users to the issue
-- `close_issue`: Close the issue
-- `notify_users`: Assign users and optionally comment
-
-## How It Works
-1. **Action Execution**: Executes configured actions based on classification result
-2. **Error Handling**: Falls back to manual review if classification fails
