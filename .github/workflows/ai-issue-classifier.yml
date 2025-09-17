@@ -1,0 +1,266 @@
+# .github/workflows/ai-issue-classifier.yml
+name: AI Issue Classifier
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  discover-configs:
+    runs-on: ubuntu-latest
+    outputs:
+      configs: ${{ steps.find-configs.outputs.configs }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Find Config Files
+      id: find-configs
+      run: |
+        configs=$(find .github/configs -name "*.yml" -o -name "*.yaml" | jq -R -s -c 'split("\n")[:-1]')
+        echo "configs=$configs" >> $GITHUB_OUTPUT
+        echo "Found configs: $configs"
+
+  classify:
+    needs: discover-configs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config: ${{ fromJson(needs.discover-configs.outputs.configs) }}
+    permissions:
+      issues: write
+      contents: read
+      models: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Load Configuration
+      id: config
+      run: |
+        CONFIG_FILE="${{ matrix.config }}"
+        echo "config-content<<EOF" >> $GITHUB_OUTPUT
+        cat "$CONFIG_FILE" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create input files for AI
+      run: |
+        echo '${{ github.event.issue.title }}' > /tmp/issue-title.txt
+        cat << 'EOF' > /tmp/issue-body.txt
+        ${{ github.event.issue.body }}
+        EOF
+
+    - name: Generate Dynamic Prompt
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const yaml = require('js-yaml');
+          const fs = require('fs');
+
+          const config = yaml.load(`${{ steps.config.outputs.config-content }}`);
+
+          // Build categories description
+          const categoriesDesc = config.categories.map(cat =>
+            `- ${cat.id}: ${cat.description}`
+          ).join('\n');
+
+          // Build indicators
+          const indicators = config.categories.map(cat =>
+            `${cat.id} indicators: ${cat.indicators.join(', ')}`
+          ).join(' or ');
+          
+          // Generate enum for JSON schema
+          const categoryIds = config.categories.map(cat => cat.id);
+          
+          const promptContent = {
+            messages: [
+              {
+                role: "system",
+                content: `You are an ${config.prompt.system_role}.`
+              },
+              {
+                role: "user", 
+                content: `${config.prompt.user_instruction}:\\n\\nTitle: {{title}}\\n\\nBody: {{body}}\\n\\nDetermine if this is:\\n${categoriesDesc}\\n\\nLook for indicators like: ${indicators}.`
+              }
+            ],
+            model: config.model,
+            responseFormat: "json_schema",
+            jsonSchema: `{
+              "name": "issue_classification",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "classification": {
+                    "type": "string",
+                    "enum": ${JSON.stringify(categoryIds)},
+                    "description": "The primary classification of the issue"
+                  },
+                  "confidence": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                    "description": "Confidence level in the classification"
+                  },
+                  "reasoning": {
+                    "type": "string",
+                    "description": "Brief explanation for the classification decision"
+                  }
+                },
+                "additionalProperties": false,
+                "required": ["classification", "confidence", "reasoning"]
+              }
+            }`
+          };
+          
+          // Write to temp prompt file
+          fs.writeFileSync('/tmp/dynamic-prompt.yml', yaml.dump(promptContent));
+          console.log('Generated prompt file:', yaml.dump(promptContent));
+
+    - name: AI Classification with Generated Prompt
+      id: classify
+      uses: actions/ai-inference@v1
+      with:
+        prompt-file: '/tmp/dynamic-prompt.yml'
+        file_input: |
+          title: /tmp/issue-title.txt
+          body: /tmp/issue-body.txt
+
+    - name: Execute Config-Driven Actions
+      uses: actions/github-script@v7
+      env:
+        AI_REASONING: ${{ steps.classify.outputs.response && fromJSON(steps.classify.outputs.response).reasoning }}
+        AI_CONFIDENCE: ${{ steps.classify.outputs.response && fromJSON(steps.classify.outputs.response).confidence }}
+      with:
+        script: |
+          const yaml = require('js-yaml');
+          const config = yaml.load(`${{ steps.config.outputs.config-content }}`);
+
+          const student = context.payload.issue.user.login;
+
+          try {
+            const aiResponse = `${{ steps.classify.outputs.response }}`;
+            console.log('AI Response:', aiResponse);
+
+            const result = JSON.parse(aiResponse);
+            console.log('Parsed Classification:', result);
+
+            // Find the category config
+            const category = config.categories.find(c => c.id === result.classification);
+            if (!category) {
+              throw new Error(`Unknown classification: ${result.classification}`);
+            }
+
+            // Execute each action defined in the category
+            for (const action of category.actions) {
+              await executeAction(action, result, student, config);
+            }
+
+          } catch (error) {
+            console.error('Classification processing failed:', error);
+            await handleError(error, student, config);
+          }
+
+          // Helper function to execute actions
+          async function executeAction(action, result, student, config) {
+            const variables = {
+              author: student,
+              title: context.payload.issue.title,
+              body: context.payload.issue.body,
+              classification: result.classification,
+              reasoning: result.reasoning,
+              confidence: result.confidence.charAt(0).toUpperCase() + result.confidence.slice(1),
+              repo: context.repo.repo,
+              date: new Date().toLocaleString()
+            };
+
+            switch (action.type) {
+              case 'comment':
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  body: action.template
+                });
+                break;
+
+              case 'add_labels':
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  labels: action.labels
+                });
+                break;
+
+              case 'assign_users':
+                await github.rest.issues.addAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  assignees: action.users
+                });
+                break;
+
+              case 'close_issue':
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  state: 'closed'
+                });
+                break;
+
+              case 'notify_users':
+                // Assign users and add mentions to a comment if specified
+                if (action.users && action.users.length > 0) {
+                  // Assign the users
+                  await github.rest.issues.addAssignees({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: context.payload.issue.number,
+                    assignees: action.users
+                  });
+                  
+                  // Add comment with mentions if message specified
+                  if (action.message) {
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: context.payload.issue.number,
+                      body: action.message
+                    });
+                  }
+                }
+                break;
+            }
+          }
+          
+          
+          async function handleError(error, student, config) {
+            const fallbackUsers = config.fallback?.assign_users || ['admin'];
+            const fallbackLabels = config.fallback?.labels || ['needs-manual-review', 'ai-failed'];
+
+            const errorMessage = config.fallback?.error_template ||
+              `🤖 **AI Classification Failed**\n\nHi @${{ github.event.issue.user.login }}! Our AI classifier encountered an issue.\n\n**Error:** ${error.message}\n\nAdmins have been notified for manual review.`;
+
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              assignees: fallbackUsers
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: errorMessage
+            });
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              labels: fallbackLabels
+            });
+          }
