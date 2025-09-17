@@ -51,10 +51,10 @@ jobs:
             `- ${cat.id}: ${cat.description}`
           ).join('\n');
 
-          // Build indicators
+          // Build indicators with better formatting
           const indicators = config.categories.map(cat =>
-            `${cat.id} indicators: ${cat.indicators.join(', ')}`
-          ).join(' or ');
+            `Look for ${cat.id} indicators like: ${cat.indicators.join(', ')}`
+          ).join('\\n');
           
           // Generate enum for JSON schema
           const categoryIds = config.categories.map(cat => cat.id);
@@ -67,7 +67,7 @@ jobs:
               },
               {
                 role: "user", 
-                content: `${config.prompt.user_instruction}:\\n\\nTitle: {{title}}\\n\\nBody: {{body}}\\n\\nDetermine if this is:\\n${categoriesDesc}\\n\\nLook for indicators like: ${indicators}.`
+                content: `${config.prompt.user_instruction}:\\n\\nTitle: {{title}}\\n\\nBody: {{body}}\\n\\nDetermine if this is:\\n${categoriesDesc}\\n\\n${indicators}`
               }
             ],
             model: config.model,
@@ -114,9 +114,6 @@ jobs:
 
     - name: Execute Config-Driven Actions
       uses: actions/github-script@v7
-      env:
-        AI_REASONING: ${{ steps.classify.outputs.response && fromJSON(steps.classify.outputs.response).reasoning }}
-        AI_CONFIDENCE: ${{ steps.classify.outputs.response && fromJSON(steps.classify.outputs.response).confidence }}
       with:
         script: |
           const config = ${{ steps.config.outputs.config-json }};
@@ -155,17 +152,19 @@ jobs:
               classification: result.classification,
               reasoning: result.reasoning,
               confidence: result.confidence.charAt(0).toUpperCase() + result.confidence.slice(1),
-              repo: context.repo.repo,
+              repository: context.repo.repo,
+              created_at: context.payload.issue.created_at,
               date: new Date().toLocaleString()
             };
 
             switch (action.type) {
               case 'comment':
+                const message = interpolateTemplate(action.template, variables);
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: context.payload.issue.number,
-                  body: action.template
+                  body: message
                 });
                 break;
 
@@ -221,13 +220,33 @@ jobs:
             }
           }
           
+          function interpolateTemplate(template, variables) {
+            return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+              const trimmedKey = key.trim();
+              
+              // Handle nested properties like user.login
+              const value = trimmedKey.split('.').reduce((obj, prop) => {
+                return obj && obj[prop] !== undefined ? obj[prop] : undefined;
+              }, variables);
+              
+              if (value === undefined) {
+                console.warn(`Template variable not found: ${trimmedKey}`);
+                return match; // Keep original placeholder
+              }
+              
+              return String(value); // Ensure string conversion
+            });
+          }
           
           async function handleError(error, student, config) {
             const fallbackUsers = config.fallback?.assign_users || ['admin'];
             const fallbackLabels = config.fallback?.labels || ['needs-manual-review', 'ai-failed'];
 
-            const errorMessage = config.fallback?.error_template ||
-              `🤖 **AI Classification Failed**\\n\\nHi @${{ github.event.issue.user.login }}! Our AI classifier encountered an issue.\\n\\n**Error:** ${error.message}\\n\\nAdmins have been notified for manual review.`;
+            const errorMessage = interpolateTemplate(
+              config.fallback?.error_template ||
+              `🤖 **AI Classification Failed**\\n\\nHi @{{author}}! Our AI classifier encountered an issue.\\n\\n**Error:** ${error.message}\\n\\nAdmins have been notified for manual review.`,
+              { author: student }
+            );
 
             await github.rest.issues.addAssignees({
               owner: context.repo.owner,
