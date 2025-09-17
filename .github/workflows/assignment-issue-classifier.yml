@@ -17,6 +17,9 @@ jobs:
     - name: Checkout for prompt file
       uses: actions/checkout@v4
       
+    - name: Setup Node.js environment
+      uses: actions/setup-node@v4
+      
     - name: Add trigger label (temporarily)
       uses: actions/github-script@v7
       with:
@@ -29,16 +32,21 @@ jobs:
           });
     
     - name: AI Classification
-      uses: github/ai-assessment-comment-labeler@main
+      id: ai-assessment-issue
+      uses: github/ai-assessment-comment-labeler@747e4e5735eaa4dbdbe47d9e9f7697c85f8201f9 # v1.0.0
+      env:
+        ACTIONS_STEP_DEBUG: true
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         issue_number: ${{ github.event.issue.number }}
         issue_body: ${{ github.event.issue.body }}
-        repo_name: ${{ github.event.repository.name }}
+        repo_name: ${{ github.repository.name }}
         owner: ${{ github.repository_owner }}
         ai_review_label: 'ai-classify'
         prompts_directory: '.github/prompts'
         labels_to_prompts_mapping: 'ai-classify,assignment-classifier.prompt.yml'
+        assessment_regex_pattern: '^###.*[aA]ssessment:\s*(.+)$'
+        assessment_regex_flags: 'm'
     
     - name: Process AI Classification
       uses: actions/github-script@v7
