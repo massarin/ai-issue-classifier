@@ -54,7 +54,7 @@ jobs:
           // Build indicators with better formatting
           const indicators = config.categories.map(cat =>
             `Look for ${cat.id} indicators like: ${cat.indicators.join(', ')}`
-          ).join('\\n');
+          ).join('\n');
           
           // Generate enum for JSON schema
           const categoryIds = config.categories.map(cat => cat.id);
@@ -67,7 +67,7 @@ jobs:
               },
               {
                 role: "user", 
-                content: `${config.prompt.user_instruction}:\\n\\nTitle: {{title}}\\n\\nBody: {{body}}\\n\\nDetermine if this is:\\n${categoriesDesc}\\n\\n${indicators}`
+                content: `${config.prompt.user_instruction}:\n\nTitle: {{title}}\n\nBody: {{body}}\n\nDetermine if this is:\n${categoriesDesc}\n\n${indicators}`
               }
             ],
             model: config.model,
