@@ -4,7 +4,7 @@
 name: Assignment Issue Classifier
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
 
 jobs:
   classify_issue:
