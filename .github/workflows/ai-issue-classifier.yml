@@ -19,11 +19,8 @@ jobs:
     - name: Load Configuration
       id: config
       run: |
-        CONFIG_FILE=".github/configs/educational.yml"
-        delimiter=$(uuidgen)
-        echo "config-content<<$delimiter" >> $GITHUB_OUTPUT
-        cat "$CONFIG_FILE" >> $GITHUB_OUTPUT
-        echo "$delimiter" >> $GITHUB_OUTPUT
+        CONFIG_JSON=$(cat .github/configs/educational.json)
+        echo "config-json=$CONFIG_JSON" >> $GITHUB_OUTPUT
 
     - name: Create input files for AI
       run: |
@@ -114,8 +111,7 @@ jobs:
         AI_CONFIDENCE: ${{ steps.classify.outputs.response && fromJSON(steps.classify.outputs.response).confidence }}
       with:
         script: |
-          const yaml = require('js-yaml');
-          const config = yaml.load(`${{ steps.config.outputs.config-content }}`);
+          const config = JSON.parse(`${{ steps.config.outputs.config-json }}`);
 
           const student = context.payload.issue.user.login;
 
@@ -223,7 +219,7 @@ jobs:
             const fallbackLabels = config.fallback?.labels || ['needs-manual-review', 'ai-failed'];
 
             const errorMessage = config.fallback?.error_template ||
-              `🤖 **AI Classification Failed**\n\nHi @${{ github.event.issue.user.login }}! Our AI classifier encountered an issue.\n\n**Error:** ${error.message}\n\nAdmins have been notified for manual review.`;
+              `🤖 **AI Classification Failed**\\n\\nHi @${{ github.event.issue.user.login }}! Our AI classifier encountered an issue.\\n\\n**Error:** ${error.message}\\n\\nAdmins have been notified for manual review.`;
 
             await github.rest.issues.addAssignees({
               owner: context.repo.owner,
