@@ -1,10 +1,10 @@
-# Assignment Issue Classifier - Automatically processes student submissions and questions
-# .github/workflows/assignment-issue-classifier.yml
+# Direct AI classification without intermediate labeling
+# .github/workflows/ai-assignment-classifier.yml
 
 name: AI Assignment Classifier
 on:
   issues:
-    types: [opened, reopened]
+    types: [opened]
 
 jobs:
   ai_classify:
@@ -16,9 +16,6 @@ jobs:
     steps:
     - name: Checkout for prompt file
       uses: actions/checkout@v4
-      
-    - name: Setup Node.js environment
-      uses: actions/setup-node@v4
       
     - name: Add trigger label (temporarily)
       uses: actions/github-script@v7
@@ -32,78 +29,25 @@ jobs:
           });
     
     - name: AI Classification
-      id: ai-assessment-issue
-      uses: github/ai-assessment-comment-labeler@747e4e5735eaa4dbdbe47d9e9f7697c85f8201f9 # v1.0.0
-      env:
-        ACTIONS_STEP_DEBUG: true
+      uses: github/ai-assessment-comment-labeler@main
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         issue_number: ${{ github.event.issue.number }}
         issue_body: ${{ github.event.issue.body }}
-        repo_name: ${{ github.repository.name }}
+        repo_name: ${{ github.event.repository.name }}
         owner: ${{ github.repository_owner }}
         ai_review_label: 'ai-classify'
         prompts_directory: '.github/prompts'
         labels_to_prompts_mapping: 'ai-classify,assignment-classifier.prompt.yml'
-        assessment_regex_pattern: '^###.*[aA]ssessment:\s*(.+)$'
-        assessment_regex_flags: 'm'
     
-    - name: Process AI Classification
+    - name: Process AI Results
       uses: actions/github-script@v7
       with:
         script: |
-          const fs = require('fs');
-          
-          // Load configuration with fallback to defaults
-          let config;
-          try {
-            const configFile = fs.readFileSync('.github/config/classifier-config.json', 'utf8');
-            config = JSON.parse(configFile);
-            console.log('Loaded custom configuration');
-          } catch (error) {
-            console.log('Using default configuration (config file not found)');
-            config = {
-              instructors: ['massarin', 'seawaR', 'larnsce'],
-              course: { name: 'Data Science Course' },
-              messages: {
-                submission: {
-                  emoji: '🎉',
-                  title: 'Assignment Submission Received!',
-                  greeting: 'Thank you for your submission',
-                  congratulations: 'Congratulations on completing this assignment!',
-                  encouragement: 'Great work! Your instructors will review this soon.',
-                  closing: 'If you have any questions about this submission, feel free to open a new issue.'
-                },
-                question: {
-                  emoji: '👋',
-                  title: 'Question Received',
-                  greeting: 'Thanks for reaching out',
-                  acknowledgment: "I've forwarded your question to the instructors",
-                  response_time: "They'll get back to you soon",
-                  urgent_help: 'Need immediate help? Please use the course communication channels.'
-                },
-                uncertain: {
-                  emoji: '🤔',
-                  title: 'Needs Clarification',
-                  greeting: 'Thanks for your submission',
-                  guidance: 'To help us assist you better, please clarify if this is',
-                  options: ['📚 **Assignment submission** - mention "completed assignment"', '❓ **Question/help request** - be specific about what you need help with'],
-                  next_steps: 'Please edit your issue to clarify, or the instructors will review manually.'
-                }
-              },
-              behavior: { close_submissions: true, show_repository_info: true, auto_timestamp: true, assign_questions_to_instructors: true, assign_uncertain_to_instructors: true },
-              labels: {
-                submission: ['assignment-submission', 'completed', 'auto-processed'],
-                question: ['question', 'needs-instructor-review', 'auto-processed'],
-                uncertain: ['needs-manual-review', 'requires-clarification']
-              }
-            };
-          }
-          
-          // Wait a moment for classification to complete and apply labels
+          // Wait a moment for AI action to complete and apply labels
           await new Promise(resolve => setTimeout(resolve, 2000));
           
-          // Get updated issue with generated labels
+          // Get updated issue with AI-generated labels
           const { data: issue } = await github.rest.issues.get({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -112,9 +56,8 @@ jobs:
           
           const labels = issue.labels.map(label => label.name);
           const student = context.payload.issue.user.login;
-          const instructorMentions = config.instructors.map(instructor => `@${instructor}`).join(' ');
           
-          console.log('Classification labels:', labels);
+          console.log('AI generated labels:', labels);
           
           // Check AI classification results
           const isSubmission = labels.some(label => 
@@ -127,27 +70,17 @@ jobs:
             label.includes('ai:assignment-classifier:help')
           );
           
-          const isUnprocessable = labels.some(label => 
-            label.includes('ai:assignment-classifier:unable-to-process')
-          );
-          
           if (isSubmission) {
             // Handle assignment submission
-            const msg = config.messages.submission;
-            let message = `${msg.emoji} **${msg.title}**\n\n` +
-              `Hi @${student}! ${msg.greeting} — it has been successfully recorded.\n\n`;
-            
-            if (config.behavior.show_repository_info) {
-              message += `**Repository:** ${context.repo.repo}\n`;
-            }
-            if (config.behavior.auto_timestamp) {
-              message += `**Submitted:** ${new Date().toLocaleString()}\n`;
-            }
-            
-            message += `\nYour instructors ${instructorMentions} have been notified.\n\n` +
-              `${msg.congratulations} ${msg.encouragement} 🚀\n\n` +
+            const message = `🎉 **Assignment Submission Received!** *(AI Classified)*\n\n` +
+              `Hi @${student}! Your assignment submission has been successfully recorded.\n\n` +
+              `**Repository:** ${context.repo.repo}\n` +
+              `**Submitted:** ${new Date().toLocaleString()}\n` +
+              `**AI Confidence:** High ✅\n\n` +
+              `Your instructors @massarin @seawaR @larnsce have been notified.\n\n` +
+              `Great job completing this assignment! 🚀\n\n` +
               `---\n` +
-              `*${msg.closing}*`;
+              `*This issue was automatically processed using AI classification. For questions about this assignment, please open a new issue with "Question" in the title.*`;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -156,13 +89,12 @@ jobs:
               body: message
             });
             
-            // Add appropriate labels
-            const submissionLabels = config.labels?.submission || ['assignment-submission', 'completed', 'auto-processed'];
+            // Clean up labels and add final ones
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.issue.number,
-              labels: submissionLabels
+              labels: ['assignment-submission', 'completed', 'ai-processed']
             });
             
             // Close the submission
@@ -175,25 +107,19 @@ jobs:
             
           } else if (isQuestion) {
             // Handle question/help request
-            if (config.behavior.assign_questions_to_instructors) {
-              await github.rest.issues.addAssignees({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.issue.number,
-                assignees: config.instructors
-              });
-            }
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              assignees: ['massarin', 'seawaR', 'larnsce']
+            });
 
-            const msg = config.messages.question;
-            let questionMessage = `${msg.emoji} **${msg.title}**\n\n` +
-              `Hi @${student}! ${msg.greeting} — ${msg.acknowledgment.toLowerCase()}.\n\n`;
-            
-            if (config.behavior.show_repository_info) {
-              questionMessage += `**Repository:** ${context.repo.repo}\n\n`;
-            }
-            
-            questionMessage += `Your instructors ${instructorMentions} have been notified. ${msg.response_time}\n\n` +
-              `**${msg.urgent_help}**`;
+            const questionMessage = `👋 **Question Detected** *(AI Classified)*\n\n` +
+              `Hi @${student}! I've identified this as a question or help request.\n\n` +
+              `**Repository:** ${context.repo.repo}\n` +
+              `**AI Confidence:** High ✅\n\n` +
+              `Your instructors @massarin @seawaR @larnsce have been notified and will respond soon.\n\n` +
+              `**Need urgent help?** Please reach out via course communication channels.`;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -202,61 +128,28 @@ jobs:
               body: questionMessage
             });
             
-            const questionLabels = config.labels?.question || ['question', 'needs-instructor-review', 'auto-processed'];
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.issue.number,
-              labels: questionLabels
+              labels: ['question', 'needs-instructor-review', 'ai-processed']
             });
             
-          } else if (isUnprocessable) {
-            // AI service failed - handle gracefully
-            const errorMessage = `🤖 **Classification Service Unavailable**\n\n` +
-              `Hi @${student}! Thanks for your submission. Our automatic classification service is currently experiencing issues.\n\n` +
-              `**What happens next:**\n` +
-              `- The instructors ${instructorMentions} have been notified\n` +
-              `- They'll review your issue manually and respond soon\n` +
-              `- No action needed from you\n\n` +
-              `**Sorry for the inconvenience!** This helps us provide better service.`;
+          } else {
+            // AI couldn't classify with confidence
+            const unclearMessage = `🤔 **Classification Uncertain** *(AI Analysis)*\n\n` +
+              `Hi @${student}! I analyzed your issue but couldn't determine with confidence if this is:\n\n` +
+              `- 📚 **Assignment submission** - Please mention "completed assignment" or tag instructors\n` +
+              `- ❓ **Question/help request** - Please be more specific about what you need help with\n\n` +
+              `**Next steps:** Please edit your issue to clarify, or instructors @massarin @seawaR @larnsce will review manually.\n\n` +
+              `*Powered by AI classification*`;
 
             await github.rest.issues.addAssignees({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.issue.number,
-              assignees: config.instructors
+              assignees: ['massarin', 'seawaR', 'larnsce']
             });
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
-              body: errorMessage
-            });
-            
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
-              labels: ['needs-manual-review', 'classification-failed']
-            });
-            
-          } else {
-            // Classification uncertain - needs clarification
-            const msg = config.messages.uncertain;
-            const unclearMessage = `${msg.emoji} **${msg.title}**\n\n` +
-              `Hi @${student}! ${msg.greeting}. ${msg.guidance}:\n\n` +
-              msg.options.map(option => `- ${option}`).join('\n') + '\n\n' +
-              `**Next steps:** ${msg.next_steps} The instructors ${instructorMentions} will help clarify.`;
-
-            if (config.behavior.assign_uncertain_to_instructors) {
-              await github.rest.issues.addAssignees({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.issue.number,
-                assignees: config.instructors
-              });
-            }
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -265,12 +158,11 @@ jobs:
               body: unclearMessage
             });
             
-            const uncertainLabels = config.labels?.uncertain || ['needs-manual-review', 'requires-clarification'];
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.issue.number,
-              labels: uncertainLabels
+              labels: ['needs-manual-review', 'ai-uncertain']
             });
           }
           
