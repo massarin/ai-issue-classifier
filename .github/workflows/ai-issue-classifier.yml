@@ -39,10 +39,12 @@ jobs:
       id: config
       run: |
         CONFIG_FILE="${{ matrix.config }}"
-        EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-        echo "config-content<<$EOF" >> $GITHUB_OUTPUT
-        cat "$CONFIG_FILE" >> $GITHUB_OUTPUT
-        echo "$EOF" >> $GITHUB_OUTPUT
+        delimiter=$(uuidgen)
+        {
+          echo "config-content<<$delimiter"
+          cat "$CONFIG_FILE"
+          echo "$delimiter"
+        } >> $GITHUB_OUTPUT
 
     - name: Create input files for AI
       run: |
