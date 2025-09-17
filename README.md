@@ -23,72 +23,74 @@ git clone https://github.com/your-username/generalised-ai-issue-classifier .gith
 
 ## Configuration
 
-### Basic Config Structure
+### Config Example
 ```json
 {
-  "name": "Educational Issue Classifier",
+  "name": "Support Issue Classifier",
   "model": "openai/gpt-4o-mini",
-  "prompt": {
-    "system_role": "educational assistant that classifies student GitHub issues",
-    "user_instruction": "Classify this GitHub issue from a student"
-  },
   "categories": [
     {
-      "id": "submission",
-      "description": "Assignment completed and ready for instructor review",
-      "indicators": ["completed", "finished", "done", "@instructor mentions"],
+      "id": "bug",
+      "description": "Software defect or error",
+      "indicators": ["error", "crash", "broken", "not working"],
       "actions": [
         {
           "type": "comment",
-          "template": "🎉 **Assignment Submission Received!**\n\nHi @{{author}}! Your assignment submission has been recorded.\n\n**Repository:** {{repository}}\n**Submitted:** {{created_at}}\n**AI Analysis:** {{reasoning}}\n**Confidence:** {{confidence}} ✅\n\nInstructors have been notified. Great work! 🚀\n\n---\n*This issue was automatically processed using AI classification.*"
+          "template": "🐛 **Bug Report**\n\nHi @{{author}}! Thanks for reporting this.\n\n**Analysis:** {{reasoning}}\n\nDevelopers will investigate soon."
         },
         {
           "type": "add_labels",
-          "labels": ["assignment-submission", "completed", "ai-processed"]
+          "labels": ["bug", "needs-investigation"]
+        },
+        {
+          "type": "assign_users",
+          "users": ["user1", "user2"]
+        }
+      ]
+    },
+    {
+      "id": "feature",
+      "description": "New feature request",
+      "indicators": ["feature", "enhancement", "add", "support"],
+      "actions": [
+        {
+          "type": "add_labels",
+          "labels": ["enhancement"]
         },
         {
           "type": "close_issue"
         },
         {
           "type": "notify_users",
-          "users": ["massarin", "seawaR", "larnsce"]
-        }
-      ]
-    },
-    {
-      "id": "question",
-      "description": "Student needs help or has a question",
-      "indicators": ["error", "stuck", "how", "why", "help"],
-      "actions": [
-        {
-          "type": "assign_users",
-          "users": ["massarin", "seawaR", "larnsce"]
-        },
-        {
-          "type": "comment",
-          "template": "👋 **Question Detected**\n\nHi @{{author}}! I've identified this as a question or help request.\n\n**AI Analysis:** {{reasoning}}\n**Confidence:** {{confidence}} ✅\n\nInstructors have been assigned and will respond soon.\n\n**Need urgent help?** Please reach out via course communication channels."
-        },
-        {
-          "type": "add_labels",
-          "labels": ["question", "needs-instructor-review", "ai-processed"]
+          "users": ["user3"],
+          "message": "New feature request needs review"
         }
       ]
     }
   ],
   "fallback": {
-    "assign_users": ["massarin", "seawaR", "larnsce"],
-    "labels": ["needs-manual-review", "ai-failed"],
-    "error_template": "🤖 **AI Classification Failed**\n\nHi @{{author}}! Our AI classifier encountered an issue processing your request.\n\nInstructors have been notified for manual review.\n\n**Sorry for the inconvenience!** Your issue will be handled manually."
+    "assign_users": ["user1"],
+    "labels": ["needs-review"],
+    "error_template": "🤖 Classification failed. Manual review needed."
   }
 }
 ```
 
 ### Available Actions
-- `comment`: Post a comment with template
-- `add_labels`: Add labels to the issue
-- `assign_users`: Assign users to the issue
+- `comment`: Post comment with template variables
+- `add_labels`: Add labels to issue  
+- `assign_users`: Assign users to issue
 - `close_issue`: Close the issue
-- `notify_users`: Assign users and optionally comment
+- `notify_users`: Assign users + optional comment message
+
+### Template Variables
+- `{{author}}` - Issue creator username
+- `{{title}}` - Issue title
+- `{{body}}` - Issue body  
+- `{{reasoning}}` - AI classification explanation
+- `{{confidence}}` - AI confidence level
+- `{{repository}}` - Repository name
+- `{{created_at}}` - Issue creation timestamp
 
 ## How It Works
 1. **Action Execution**: Executes configured actions based on classification result
