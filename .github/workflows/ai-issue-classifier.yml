@@ -20,11 +20,10 @@ jobs:
       id: config
       run: |
         CONFIG_FILE=".github/configs/educational.yml"
-        {
-          echo 'config-content<<EOF'
-          cat "$CONFIG_FILE"
-          echo 'EOF'
-        } >> $GITHUB_OUTPUT
+        delimiter=$(uuidgen)
+        echo "config-content<<$delimiter" >> $GITHUB_OUTPUT
+        cat "$CONFIG_FILE" >> $GITHUB_OUTPUT
+        echo "$delimiter" >> $GITHUB_OUTPUT
 
     - name: Create input files for AI
       run: |
