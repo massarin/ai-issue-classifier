@@ -48,6 +48,11 @@ runs:
       shell: bash
       run: npm install js-yaml
 
+    - name: Download prompt template
+      shell: bash
+      run: |
+        curl -o /tmp/classify-issue.prompt.yml https://raw.githubusercontent.com/massarin/ai-issue-classifier/refs/heads/main/classify-issue.prompt.yml
+
     - name: Create input files for AI
       shell: bash
       run: |
@@ -60,7 +65,7 @@ runs:
       id: classify
       uses: actions/ai-inference@v1
       with:
-        prompt-file: 'https://raw.githubusercontent.com/massarin/ai-issue-classifier/refs/heads/main/classify-issue.prompt.yml'
+        prompt-file: '/tmp/classify-issue.prompt.yml'
         file_input: |
           title: /tmp/issue-title.txt
           body: /tmp/issue-body.txt
