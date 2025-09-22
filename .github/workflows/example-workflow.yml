@@ -1,78 +1,213 @@
-# Example workflow for using the AI Issue Classifier action
-# Copy this to your repository's .github/workflows/ directory
+# AI Issue Classifier for Large Open Source Projects
+# Automatically classifies and labels GitHub issues using AI
 
-name: AI Issue Classifier
+name: AI Issue Labeler
 
 on:
   issues:
-    types: [opened, reopened]
+    types: [opened, reopened, edited]
+  pull_request:
+    types: [opened, reopened, edited]
 
 jobs:
-  classify-issue:
+  classify-and-label:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      pull-requests: write
       contents: read
       models: read
     steps:
-      - name: Classify Issue with AI
+      - name: Classify and Label Issues/PRs
         uses: massarin/ai-issue-classifier@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           model: 'openai/gpt-4o-mini'
           categories: |
-            submission:
-              description: "Assignment completed and ready for instructor review"
+            bug:
+              description: "Software defect, error, or unexpected behavior that needs fixing"
               actions:
+                - type: add_labels
+                  labels: ["bug", "needs-investigation"]
                 - type: comment
                   template: |
-                    🎉 **Assignment Submission Received!**
+                    🐛 **Bug Report Detected**
 
-                    Hi @{{author}}! Your assignment submission has been recorded.
+                    Thank you for reporting this issue, @{{author}}!
 
-                    **Repository:** {{repository}}
-                    **Submitted:** {{created_at}}
-                    **AI Analysis:** {{reasoning}}
-                    **Confidence:** {{confidence}} ✅
+                    **AI Classification:** {{reasoning}}
+                    **Confidence Level:** {{confidence}}
 
-                    Instructors have been notified. Great work! 🚀
+                    This has been labeled as a bug and added to our investigation queue. A maintainer will review it soon.
 
-                    ---
-                    *This issue was automatically processed using AI classification.*
+                    **To help us fix this faster:**
+                    - Include steps to reproduce
+                    - Share your environment details
+                    - Add any relevant error messages or logs
+
+            feature-request:
+              description: "Request for new functionality or enhancement to existing features"
+              actions:
                 - type: add_labels
-                  labels: ["assignment-submission", "completed", "ai-processed"]
-                - type: close_issue
-                - type: assign_users
-                  users: ["massarin", "seawaR", "larnsce"]
+                  labels: ["enhancement", "feature-request"]
+                - type: comment
+                  template: |
+                    ✨ **Feature Request Identified**
+
+                    Thanks for the suggestion, @{{author}}!
+
+                    **AI Analysis:** {{reasoning}}
+                    **Confidence:** {{confidence}}
+
+                    This feature request will be reviewed by our team. We appreciate community input!
+
+                    **Community feedback welcome** - please upvote 👍 if you'd find this useful.
+
+            documentation:
+              description: "Issues related to documentation, guides, or examples"
+              actions:
+                - type: add_labels
+                  labels: ["documentation", "good-first-issue"]
+                - type: comment
+                  template: |
+                    📚 **Documentation Issue**
+
+                    Hi @{{author}}, thank you for helping improve our documentation!
+
+                    **AI Classification:** {{reasoning}}
+
+                    This is marked as a good first issue for new contributors. Community contributions are very welcome!
 
             question:
-              description: "Student needs help or has a question"
+              description: "User asking for help, clarification, or how-to guidance"
               actions:
-                - type: assign_users
-                  users: ["massarin", "seawaR", "larnsce"]
+                - type: add_labels
+                  labels: ["question", "support"]
                 - type: comment
                   template: |
-                    👋 **Question Detected**
+                    ❓ **Question/Support Request**
 
-                    Hi @{{author}}! I've identified this as a question or help request.
+                    Hello @{{author}}!
 
                     **AI Analysis:** {{reasoning}}
-                    **Confidence:** {{confidence}} ✅
 
-                    Instructors have been assigned and will respond soon.
+                    For questions and support:
+                    - Check our [documentation](https://github.com/{{repository}}/wiki)
+                    - Search [existing discussions](https://github.com/{{repository}}/discussions)
+                    - Join our community chat for real-time help
 
-                    **Need urgent help?** Please reach out via course communication channels.
+                    If this is a bug report, please provide more technical details.
+
+            security:
+              description: "Security vulnerability, exploit, or security-related concern"
+              actions:
                 - type: add_labels
-                  labels: ["question", "needs-instructor-review", "ai-processed"]
+                  labels: ["security", "priority-high"]
+                - type: assign_users
+                  users: ["security-team"]
+                - type: comment
+                  template: |
+                    🔒 **Security Issue Detected**
+
+                    @{{author}}, thank you for the security report.
+
+                    **IMPORTANT:** For security vulnerabilities, please use our [security policy](https://github.com/{{repository}}/security/policy) instead of public issues.
+
+                    Our security team has been notified and will review this immediately.
+
+            performance:
+              description: "Performance issues, optimization requests, or resource usage problems"
+              actions:
+                - type: add_labels
+                  labels: ["performance", "optimization"]
+                - type: comment
+                  template: |
+                    ⚡ **Performance Issue**
+
+                    Thanks for the performance report, @{{author}}!
+
+                    **AI Analysis:** {{reasoning}}
+
+                    Performance issues are important to us. Please include:
+                    - Performance metrics or benchmarks
+                    - System specifications
+                    - Steps to reproduce the performance issue
+
+            compatibility:
+              description: "Platform, browser, or version compatibility issues"
+              actions:
+                - type: add_labels
+                  labels: ["compatibility", "platform-specific"]
+                - type: comment
+                  template: |
+                    🔧 **Compatibility Issue**
+
+                    Hi @{{author}}, thanks for reporting this compatibility issue!
+
+                    **AI Classification:** {{reasoning}}
+
+                    Please help us by including:
+                    - Platform/OS version
+                    - Browser version (if applicable)
+                    - Dependency versions
+                    - Any error messages
+
+            duplicate:
+              description: "Issue that appears to be a duplicate of an existing issue"
+              actions:
+                - type: add_labels
+                  labels: ["duplicate", "needs-verification"]
+                - type: comment
+                  template: |
+                    🔄 **Potential Duplicate**
+
+                    Hi @{{author}}, this might be a duplicate issue.
+
+                    **AI Analysis:** {{reasoning}}
+
+                    Please search existing issues before closing. If this is indeed a duplicate, reference the original issue.
+
+            invalid:
+              description: "Issue that doesn't contain enough information or appears to be spam"
+              actions:
+                - type: add_labels
+                  labels: ["invalid", "needs-more-info"]
+                - type: comment
+                  template: |
+                    ⚠️ **More Information Needed**
+
+                    Hi @{{author}}, we need more information to help you.
+
+                    **AI Analysis:** {{reasoning}}
+
+                    Please provide:
+                    - Clear description of the issue
+                    - Steps to reproduce
+                    - Expected vs actual behavior
+                    - Relevant code examples
+
+            wontfix:
+              description: "Issue that won't be fixed due to design decisions or scope limitations"
+              actions:
+                - type: add_labels
+                  labels: ["wontfix", "by-design"]
+                - type: comment
+                  template: |
+                    🚫 **Won't Fix - By Design**
+
+                    Thanks for the report, @{{author}}.
+
+                    **AI Analysis:** {{reasoning}}
+
+                    This appears to be by design or outside our project scope. Please review our project goals and contribution guidelines.
 
           fallback: |
-            assign_users: ["massarin", "seawaR", "larnsce"]
-            labels: ["needs-manual-review", "ai-failed"]
+            labels: ["needs-triage", "ai-classified"]
             comment: |
-              🤖 **AI Classification Failed**
+              🤖 **AI Classification Pending**
 
-              Hi @{{author}}! Our AI classifier encountered an issue processing your request.
+              Hi @{{author}}! Thanks for your contribution.
 
-              Instructors have been notified for manual review.
+              Our AI classifier needs human review for this issue. A maintainer will triage it manually.
 
-              **Sorry for the inconvenience!** Your issue will be handled manually.
+              **This doesn't mean there's anything wrong** - some issues just need human insight!
