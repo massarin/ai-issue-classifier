@@ -16,7 +16,7 @@ jobs:
       models: read
     steps:
       - name: Classify Issue with AI
-        uses: massarin/generalised-ai-issue-classifier@main
+        uses: massarin/ai-issue-classifier@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           model: 'openai/gpt-4o-mini'
