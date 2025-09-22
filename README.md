@@ -2,6 +2,11 @@
 
 Automatically classify GitHub issues using AI and execute configurable actions.
 
+- Direct integration with GitHub Models API
+- Simple YAML-based configuration directly in the workflow file
+- Template variables for dynamic comments
+- Fallback actions for classification failures
+
 ## Quick Start
 
 Add this workflow to `.github/workflows/ai-classifier.yml`:
