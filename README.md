@@ -1,113 +1,135 @@
 # AI Issue Classifier
 
-A flexible, config-driven GitHub Action that automatically classifies issues using AI and executes customizable actions based on the classification results.
+Automatically classify GitHub issues using AI and execute configurable actions.
 
 ## Quick Start
 
-### 1. Create Workflow
-Copy this workflow to `.github/workflows/ai-issue-classifier.yml` in your repository:
+Add this workflow to `.github/workflows/ai-classifier.yml`:
 
 ```yaml
 name: AI Issue Classifier
-
 on:
   issues:
     types: [opened, reopened]
 
 jobs:
-  classify-issue:
+  classify:
     runs-on: ubuntu-latest
     permissions:
       issues: write
       contents: read
       models: read
     steps:
-      - name: Classify Issue with AI
-        uses: massarin/generalised-ai-issue-classifier@main
+      - uses: massarin/ai-issue-classifier@main
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          categories: |
+            bug:
+              description: "Software defect or error"
+              actions:
+                - type: add_labels
+                  labels: ["bug"]
+                - type: assign_users
+                  users: ["alice", "bob"]
+            feature:
+              description: "New feature request"
+              actions:
+                - type: add_labels
+                  labels: ["enhancement"]
 ```
-
-### 2. Configure Classification
-Create config files in your `.github` repository (or `{username}/.github` for organization-wide configs)
-
-### 3. Prerequisites
-- **Enable GitHub Models** in your organization settings
-- Grant access to GitHub Models for development
-
-## Advanced Configuration
 
 ## Configuration
 
-### Config Example
-```json
-{
-  "name": "Support Issue Classifier",
-  "model": "openai/gpt-4o-mini",
-  "categories": [
-    {
-      "id": "bug",
-      "description": "Software defect or error",
-      "indicators": ["error", "crash", "broken", "not working"],
-      "actions": [
-        {
-          "type": "comment",
-          "template": "🐛 **Bug Report**\n\nHi @{{author}}! Thanks for reporting this.\n\n**Analysis:** {{reasoning}}\n\nDevelopers will investigate soon."
-        },
-        {
-          "type": "add_labels",
-          "labels": ["bug", "needs-investigation"]
-        },
-        {
-          "type": "assign_users",
-          "users": ["user1", "user2"]
-        }
-      ]
-    },
-    {
-      "id": "feature",
-      "description": "New feature request",
-      "indicators": ["feature", "enhancement", "add", "support"],
-      "actions": [
-        {
-          "type": "add_labels",
-          "labels": ["enhancement"]
-        },
-        {
-          "type": "close_issue"
-        },
-        {
-          "type": "notify_users",
-          "users": ["user3"],
-          "message": "New feature request needs review"
-        }
-      ]
-    }
-  ],
-  "fallback": {
-    "assign_users": ["user1"],
-    "labels": ["needs-review"],
-    "error_template": "🤖 Classification failed. Manual review needed."
-  }
-}
+### Categories
+Define classification categories and actions:
+
+```yaml
+categories: |
+  category_name:
+    description: "What this category represents"
+    actions:
+      - type: comment
+        template: "Hello @{{author}}! {{reasoning}}"
+      - type: add_labels
+        labels: ["label1", "label2"]
+      - type: assign_users
+        users: ["user1", "user2"]
+      - type: close_issue
 ```
 
-### Available Actions
-- `comment`: Post comment with template variables
-- `add_labels`: Add labels to issue  
-- `assign_users`: Assign users to issue
-- `close_issue`: Close the issue
-- `notify_users`: Assign users + optional comment message
-
 ### Template Variables
-- `{{author}}` - Issue creator username
+Use these in comment templates:
+- `{{author}}` - Issue creator
 - `{{title}}` - Issue title
-- `{{body}}` - Issue body  
-- `{{reasoning}}` - AI classification explanation
-- `{{confidence}}` - AI confidence level
+- `{{body}}` - Issue body
+- `{{reasoning}}` - AI reasoning
+- `{{confidence}}` - AI confidence
 - `{{repository}}` - Repository name
-- `{{created_at}}` - Issue creation timestamp
+- `{{created_at}}` - Creation date
 
-## How It Works
-1. **Action Execution**: Executes configured actions based on classification result
-2. **Error Handling**: Falls back to manual review if classification fails
+### Fallback
+Handle classification failures:
+
+```yaml
+fallback: |
+  assign_users: ["admin"]
+  labels: ["needs-review"]
+  comment: "Manual review needed."
+```
+
+## Examples
+
+### Educational Setup
+```yaml
+categories: |
+  submission:
+    description: "Assignment completed"
+    actions:
+      - type: comment
+        template: "🎉 Submission received @{{author}}!"
+      - type: close_issue
+      - type: assign_users
+        users: ["instructor"]
+  question:
+    description: "Student needs help"
+    actions:
+      - type: assign_users
+        users: ["instructor"]
+      - type: add_labels
+        labels: ["question"]
+```
+
+### Support System
+```yaml
+categories: |
+  billing:
+    description: "Payment issues"
+    actions:
+      - type: assign_users
+        users: ["billing-team"]
+  technical:
+    description: "Technical problems"
+    actions:
+      - type: assign_users
+        users: ["tech-support"]
+```
+
+## Prerequisites
+
+1. Enable **GitHub Models** in organization settings
+2. Grant access to GitHub Models for development
+
+## Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `categories` | YAML classification config | Required |
+| `fallback` | Fallback actions for errors | Basic fallback |
+| `model` | AI model to use | `openai/gpt-4o-mini` |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `classification` | AI classification result |
+| `confidence` | Confidence level (high/medium/low) |
+| `reasoning` | AI reasoning explanation |
