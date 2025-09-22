@@ -1,0 +1,78 @@
+# Example workflow for using the AI Issue Classifier action
+# Copy this to your repository's .github/workflows/ directory
+
+name: AI Issue Classifier
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  classify-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+      models: read
+    steps:
+      - name: Classify Issue with AI
+        uses: massarin/generalised-ai-issue-classifier@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          model: 'openai/gpt-4o-mini'
+          categories: |
+            submission:
+              description: "Assignment completed and ready for instructor review"
+              actions:
+                - type: comment
+                  template: |
+                    🎉 **Assignment Submission Received!**
+
+                    Hi @{{author}}! Your assignment submission has been recorded.
+
+                    **Repository:** {{repository}}
+                    **Submitted:** {{created_at}}
+                    **AI Analysis:** {{reasoning}}
+                    **Confidence:** {{confidence}} ✅
+
+                    Instructors have been notified. Great work! 🚀
+
+                    ---
+                    *This issue was automatically processed using AI classification.*
+                - type: add_labels
+                  labels: ["assignment-submission", "completed", "ai-processed"]
+                - type: close_issue
+                - type: assign_users
+                  users: ["massarin", "seawaR", "larnsce"]
+
+            question:
+              description: "Student needs help or has a question"
+              actions:
+                - type: assign_users
+                  users: ["massarin", "seawaR", "larnsce"]
+                - type: comment
+                  template: |
+                    👋 **Question Detected**
+
+                    Hi @{{author}}! I've identified this as a question or help request.
+
+                    **AI Analysis:** {{reasoning}}
+                    **Confidence:** {{confidence}} ✅
+
+                    Instructors have been assigned and will respond soon.
+
+                    **Need urgent help?** Please reach out via course communication channels.
+                - type: add_labels
+                  labels: ["question", "needs-instructor-review", "ai-processed"]
+
+          fallback: |
+            assign_users: ["massarin", "seawaR", "larnsce"]
+            labels: ["needs-manual-review", "ai-failed"]
+            comment: |
+              🤖 **AI Classification Failed**
+
+              Hi @{{author}}! Our AI classifier encountered an issue processing your request.
+
+              Instructors have been notified for manual review.
+
+              **Sorry for the inconvenience!** Your issue will be handled manually.

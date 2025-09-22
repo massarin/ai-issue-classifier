@@ -1,0 +1,194 @@
+name: 'AI Issue Classifier'
+description: 'Automatically classify GitHub issues using AI and execute configurable actions'
+author: 'massarin'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access'
+    required: false
+    default: ${{ github.token }}
+  model:
+    description: 'AI model to use'
+    required: false
+    default: 'openai/gpt-4o-mini'
+  categories:
+    description: 'YAML configuration of categories and actions'
+    required: true
+  fallback:
+    description: 'Fallback actions when classification fails'
+    required: false
+    default: |
+      assign_users: []
+      labels: ["needs-review"]
+      comment: "🤖 Classification failed. Manual review needed."
+
+outputs:
+  classification:
+    description: 'The AI classification result'
+    value: ${{ steps.classify.outputs.classification }}
+  confidence:
+    description: 'AI confidence level'
+    value: ${{ steps.classify.outputs.confidence }}
+  reasoning:
+    description: 'AI reasoning for the classification'
+    value: ${{ steps.classify.outputs.reasoning }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout current repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies
+      shell: bash
+      run: npm install js-yaml
+
+    - name: Create input files for AI
+      shell: bash
+      run: |
+        echo '${{ github.event.issue.title }}' > /tmp/issue-title.txt
+        cat << 'EOF' > /tmp/issue-body.txt
+        ${{ github.event.issue.body }}
+        EOF
+
+    - name: AI Classification
+      id: classify
+      uses: actions/ai-inference@v1
+      with:
+        prompt-file: 'classify-issue.prompt.yml'
+        file_input: |
+          title: /tmp/issue-title.txt
+          body: /tmp/issue-body.txt
+
+    - name: Execute Actions
+      env:
+        ISSUE_TITLE: ${{ github.event.issue.title }}
+        ISSUE_BODY: ${{ github.event.issue.body }}
+        ISSUE_USER: ${{ github.event.issue.user.login }}
+        CATEGORIES: ${{ inputs.categories }}
+        FALLBACK: ${{ inputs.fallback }}
+        REPO_NAME: ${{ github.repository }}
+        CREATED_AT: ${{ github.event.issue.created_at }}
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const yaml = require('js-yaml');
+          const categories = yaml.load(process.env.CATEGORIES);
+          const fallback = yaml.load(process.env.FALLBACK);
+          const user = process.env.ISSUE_USER;
+
+          try {
+            const aiResponse = `${{ steps.classify.outputs.response }}`;
+            const result = JSON.parse(aiResponse);
+
+            core.setOutput('classification', result.classification);
+            core.setOutput('confidence', result.confidence);
+            core.setOutput('reasoning', result.reasoning);
+
+            const category = categories[result.classification];
+            if (!category) {
+              throw new Error(`Unknown classification: ${result.classification}`);
+            }
+
+            const variables = {
+              author: user,
+              title: process.env.ISSUE_TITLE,
+              body: process.env.ISSUE_BODY,
+              classification: result.classification,
+              reasoning: result.reasoning,
+              confidence: result.confidence,
+              repository: process.env.REPO_NAME,
+              created_at: process.env.CREATED_AT
+            };
+
+            for (const action of category.actions || []) {
+              await executeAction(action, variables);
+            }
+
+          } catch (error) {
+            console.error('Classification failed:', error);
+            await handleFallback(error, user, fallback);
+          }
+
+          async function executeAction(action, variables) {
+            switch (action.type) {
+              case 'comment':
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  body: interpolate(action.template, variables)
+                });
+                break;
+              case 'add_labels':
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  labels: action.labels
+                });
+                break;
+              case 'assign_users':
+                await github.rest.issues.addAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  assignees: action.users
+                });
+                break;
+              case 'close_issue':
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.issue.number,
+                  state: 'closed'
+                });
+                break;
+            }
+          }
+
+          async function handleFallback(error, user, fallback) {
+            if (fallback.assign_users?.length) {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                assignees: fallback.assign_users
+              });
+            }
+
+            if (fallback.labels?.length) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                labels: fallback.labels
+              });
+            }
+
+            if (fallback.comment) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: interpolate(fallback.comment, { author: user })
+              });
+            }
+          }
+
+          function a(template, variables) {
+            return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
+              const trimmedKey = key.trim();
+              return variables[trimmedKey] != null ? String(variables[trimmedKey]) : match;
+            });
+          }
+
+branding:
+  icon: 'tag'
+  color: 'blue'

@@ -1,25 +1,41 @@
-# Generalized AI Issue Classifier
+# AI Issue Classifier
 
-A flexible, config-driven GitHub workflow that automatically classifies issues using AI and executes customizable actions based on the classification results.
-## Setup
+A flexible, config-driven GitHub Action that automatically classifies issues using AI and executes customizable actions based on the classification results.
 
-### Prerequisites
-1. **Enable GitHub Models** in your organization settings
-   - Go to organization settings → Code, planning, and automation → Models
-   - Enable GitHub Models for development
-   - Grant access to GitHub Models
+## Quick Start
 
-### Installation
-**One-liner installation:**
-```bash
-git clone https://github.com/your-username/generalised-ai-issue-classifier .github
+### 1. Create Workflow
+Copy this workflow to `.github/workflows/ai-issue-classifier.yml` in your repository:
+
+```yaml
+name: AI Issue Classifier
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  classify-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+      models: read
+    steps:
+      - name: Classify Issue with AI
+        uses: massarin/generalised-ai-issue-classifier@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**Manual installation:**
-1. Copy `workflows/ai-issue-classifier.yml` to `.github/workflows/`
-2. Copy `prompts/classify-issue.prompt.yml` to `.github/prompts/`
-3. Copy `configs/educational.json.example` to `.github/configs/educational.json`
-4. Update usernames and settings in your config files
+### 2. Configure Classification
+Create config files in your `.github` repository (or `{username}/.github` for organization-wide configs)
+
+### 3. Prerequisites
+- **Enable GitHub Models** in your organization settings
+- Grant access to GitHub Models for development
+
+## Advanced Configuration
 
 ## Configuration
 
