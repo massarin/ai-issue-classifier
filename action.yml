@@ -51,7 +51,76 @@ runs:
     - name: Download prompt template
       shell: bash
       run: |
-        curl -o /tmp/classify-issue.prompt.yml https://raw.githubusercontent.com/massarin/ai-issue-classifier/refs/heads/main/classify-issue.prompt.yml
+        curl -o /tmp/prompt-template.yml https://raw.githubusercontent.com/massarin/ai-issue-classifier/refs/heads/main/classify-issue.prompt.yml
+
+    - name: Generate ai-inference prompt.yml
+      shell: bash
+      env:
+        ISSUE_TITLE: ${{ github.event.issue.title }}
+        ISSUE_BODY: ${{ github.event.issue.body }}
+        CATEGORIES: ${{ inputs.categories }}
+        MODEL: ${{ inputs.model }}
+      run: |
+        node -e "
+        const yaml = require('js-yaml');
+        const fs = require('fs');
+
+        // Load template and categories
+        const template = yaml.load(fs.readFileSync('/tmp/prompt-template.yml', 'utf8'));
+        const categories = yaml.load(process.env.CATEGORIES);
+
+        // Extract category names and descriptions
+        const categoryNames = Object.keys(categories);
+        const categoryDescriptions = categoryNames.map(name =>
+          \`- \${name}: \${categories[name].description || name}\`
+        ).join('\n        ');
+
+        // Create dynamic content
+        const userContent = \`Classify this GitHub issue:
+
+        Title: \${process.env.ISSUE_TITLE}
+
+        Body: \${process.env.ISSUE_BODY}
+
+        Classify into one of these categories:
+        \${categoryDescriptions}\`;
+
+        // Create dynamic JSON schema
+        const jsonSchema = {
+          name: 'issue_classification',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              classification: {
+                type: 'string',
+                enum: categoryNames,
+                description: 'The classification category'
+              },
+              confidence: {
+                type: 'string',
+                enum: ['high', 'medium', 'low'],
+                description: 'Confidence level in the classification'
+              },
+              reasoning: {
+                type: 'string',
+                description: 'Brief explanation for the classification decision'
+              }
+            },
+            additionalProperties: false,
+            required: ['classification', 'confidence', 'reasoning']
+          }
+        };
+
+        // Replace placeholders
+        template.messages[1].content = userContent;
+        template.model = process.env.MODEL;
+        template.jsonSchema = JSON.stringify(jsonSchema);
+
+        // Write final YAML
+        fs.writeFileSync('/tmp/classify-issue-withcontent.prompt.yml', yaml.dump(template));
+        console.log('Generated generalized prompt with categories:', categoryNames);
+        "
 
     - name: Create input files for AI
       shell: bash
@@ -65,7 +134,7 @@ runs:
       id: classify
       uses: actions/ai-inference@v1
       with:
-        prompt-file: '/tmp/classify-issue.prompt.yml'
+        prompt-file: '/tmp/classify-issue-withcontent.prompt.yml'
         file_input: |
           title: /tmp/issue-title.txt
           body: /tmp/issue-body.txt
